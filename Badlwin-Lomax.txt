@@ -1,0 +1,209 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Apr 19 12:57:04 2018
+
+@author: rcpv1g15
+"""
+import numpy as np
+from RoughVelocity import RVelocity
+#from Full_Model_Test import VP
+
+n = 201;    dx = 0.25                                                          # numerical parameters
+
+u = RVelocity()[0]
+v = RVelocity()[1]
+##u = np.zeros((n, 1))                                                           # initialize u
+##v = np.zeros((n, 1))                                                           # initialize v
+##r = np.zeros((n, 1))                                                           # initialize r 
+
+xmax = 301.0;   ymax = 20.0                                                    # domain size
+
+Re = 100.0;     Ue = 1.0;   delta = 1.0                                        # physical properties
+
+nit = round(xmax/dx);   dy = ymax/((n-1).real)                                 # x-grid
+Y = np.arange(0, ymax+dy, dy) [np.newaxis]                                     # y-grid not transposed
+y = Y.T                                 
+
+#yp = np.ndarray(201,)                                                          # initialize law of the wall coordinate y+
+up = np.ndarray(201,)                                                          # initialize law of the wall velocity u+
+rho = 1.225                                                                    # air density at sea level and 15°C
+nu = 14.61*(10**(-6))                                                          # air kinematic viscosity at sea level and 15°C
+mu = 17.89*(10**(-6))
+#dudy = np.ndarray(n-1, )                                                       # initialize du/dy array
+#
+#tho = np.ndarray(n-1, )                                                        # initialize shear stress array
+#for i in range(0, n-1):
+#    dudy[i] = (u[i+1]-u[i])/dy                                                 # calculate du/dy derivative (explicit definition)
+#    tho[i] = mu*dudy[i]  
+#    
+#tho_w = tho[0]                                                                 # shear stress at wall (du/dy at y=0)
+#u_tho = np.sqrt(tho_w/rho)                                                     # friction velocity
+##    h = 1.0                                                                       # roughness height
+##    alpha = 10.0                                                                    # Roughness Factor
+##    kappa = 0.41                                                                   # von Karman constant
+##    D = 5.5                                                                        # additive constant for smooth wall, turbulent boundary layer
+#
+#for i in range(0, n-1):
+#    yp[i] = (y[i]*u_tho)/(nu/rho)                                              # y+: law of the wall coordinate
+#    up[i] = u[i]/u_tho                                                         # u+: dimensionless law of the wall velocity
+#
+#yp[0] = 0.0   
+      
+def BL():
+    """Turbulent Model: Baldwin-Lomax method"""
+    
+    dudy = np.ndarray(n-1, )                                                      # initialize du/dy array
+    dvdx = np.ndarray(n-1, )                                                      # initialize dv/dy array   
+    for i in range(0, n-1):                                                        # calculate both derivatives
+        dudy[i] = (u[i+1]-u[i])/dy
+        dvdx[i] = (v[i+1]-v[i])/dx
+    
+    yp = np.ndarray(201,)
+    up = np.ndarray(201,)
+    tho = np.ndarray(n-1, )                                                        # initialize shear stress array
+    for i in range(0, n-1):
+#        dudy[i] = (u[i+1]-u[i])/dy                                                 # calculate du/dy derivative (explicit definition)
+        tho[i] = mu*dudy[i] 
+        
+    tho_w = tho[0]                                                                 # shear stress at wall (du/dy at y=0)
+    u_tho = np.sqrt(tho_w/rho)
+    
+    for i in range(0, n-1):
+        yp[i] = (y[i]*u_tho)/(nu/rho)                                              # y+: law of the wall coordinate
+        up[i] = u[i]/u_tho                                                         # u+: dimensionless law of the wall velocity
+    
+    yp[0] = 0.0 
+    
+#        plt.plot(y[0:200], uR[0:200], 'b', label=r'$u(y)$', linewidth=2.0)             # plot check of derivative accuracy
+#        plt.plot(y[0:200], duRdy, 'r', label=r'$du/dy$', linewidth=2.0)
+#        plt.legend(loc=1, fontsize=16)
+#        plt.title('du/dy Derivation Check')
+#        plt.xlabel(r'$y$', fontsize=16)
+#        plt.ylabel(r'$u$', fontsize=16)
+#        plt.show()
+#        
+#        plt.plot(x[0:200], vR[0:200], 'b', label=r'$v(x)$', linewidth=2.0)
+#        plt.plot(x[0:200], dvRdx, 'r', label=r'$dv/dx$', linewidth=2.0)
+#        plt.legend(loc=1, fontsize=16)
+#        plt.title('dv/dx Derivation Check')
+#        plt.xlabel(r'$x$', fontsize=16)
+#        plt.ylabel(r'$v$', fontsize=16)
+#        plt.show()
+    
+    k = 0.4                                                                        # constants for Baldwin-Lomax turbulent model
+    Ap = 26
+    C_CP = 1.6
+    C_KLEB = 0.3
+    C_WK = 0.25
+    K = 0.0168
+    
+    l = np.ndarray(n-1, )                                                          # initialize "l" variable for inner layer computation
+    
+    for i in range(0, n-1):                                                        # calculate "l"
+        l[i] = (k*y[i])*(1-np.exp(-yp[i]/Ap))
+    
+    
+    ohm = np.sqrt((2*(dudy-dvdx)**2))                                            # calculate "|ohm|" variable
+    mu_i = rho*(l**2)*ohm                                                          # calculate inner eddy viscosity
+    mu_inner = np.around(mu_i, 2)                                                  # round values of mu_i to second decimal point to obtain an equal value with outer eddy viscosity
+    
+    Fy = np.ndarray(n-1, )                                                         # initialize F(y)
+    
+    for i in range(0, n-1):                                                        # calculate F(y)
+        Fy[i] = y[i]*ohm[i]*(1-np.exp(-yp[i]/Ap))
+    
+    F_max = Fy.max()                                                               # find maximum value of F(y)
+    y_max = np.argmax(Fy)                                                          # find y-value at which F_max occurs
+    B = y_max*F_max                                                                # define y_max*F_max product
+    u_d = np.sqrt((u**2)+(v**2))                                                 # compute velocity difference at every point
+    u_dif = u_d.max()                                                              # find u_dif value as maximum velocity difference
+    G = C_WK*y_max*(u_dif**2)/F_max                                                # calculate other possible value of F_WAKE
+    F_WAKE = min(B, G)                                                             # compare B and G to find F_WAKE
+    F_KLEB = (1+(5.5*((y*C_KLEB)/y_max)**6))**(-1)                                 # compute F_KLEB
+    mu_o = rho*K*C_CP*F_WAKE*F_KLEB[0:200]                                         # compute outer eddy viscosity
+    mu_outer = np.around(mu_o, 2)                                                  # round values of mu_o to second decimal point to obtain an equal value with inner eddy viscosity
+    
+    y_c = list()                                                                   # create a list to add all y-values at which inner and outer eddy viscosity values are equal
+    
+    for i in range(0, n-1):                                                        # add all y-values at which inner and outer eddy viscosity values are equal
+        if mu_outer[i] == mu_inner[i]:
+            y_c.append(y[i])
+    
+    y_crossover = float(y_c[0])                                                    # find first value at which inner and outer eddy viscosity values are equal
+#        print("y_crossover = ", y_crossover)
+    
+    mu_t = np.ndarray(n-1, )                                                       # initialize eddy viscosity array
+    
+    for i in range(0, n-1):                                                        # set eddy viscosity values equal to inner before y_crossover and to outer after y_crossover
+        if y[i] <= y_crossover:
+            mu_t[i] = mu_i[i]
+        elif y[i] > y_crossover:
+            mu_t[i] = mu_o[i]
+    
+    return(mu_t)
+
+#    plt.plot(Re_x[0:200], mu_i[0:200], label=r'$\mu_i$', linewidth=2.0)
+#    plt.plot(Re_x[0:200], mu_o[0:200], label=r'$\mu_o$', linewidth=2.0)
+#    plt.legend(loc=2, fontsize=16)
+#    plt.xscale('log')
+#    plt.title('Eddy Viscosity')
+#    plt.xlabel(r'$Re_x$', fontsize=16)
+#    plt.ylabel(r'$\mu_t$', fontsize=16)
+#    plt.show()
+    
+#    plt.plot(Re_x, mu_t, linewidth=2.0)                                            # plot eddy viscosity against x-Reynolds number
+#    plt.xscale('log')
+#    plt.title('Eddy Viscosity')
+#    plt.xlabel(r'$Re_x$', fontsize=16)
+#    plt.ylabel(r'$\mu_t$', fontsize=16)
+#    plt.show()
+
+#    plt.plot(mu_i[0:200], y[0:200], label=r'$\mu_i$', linewidth=2.0)
+#    plt.plot(mu_o[0:200], y[0:200], label=r'$\mu_o$', linewidth=2.0)
+#    plt.legend(loc=2, fontsize=16)
+#    plt.title('Eddy Viscosity')
+#    plt.xlabel(r'$\mu_t$', fontsize=16)
+#    plt.ylabel(r'$y$', fontsize=16)
+#    plt.show()
+    
+#    plt.plot(mu_t, y[0:200], linewidth=2.0)                                        # plot eddy viscosity against y
+#    plt.xlabel(r'$\mu_t$', fontsize=16)
+#    plt.title('Eddy Viscosity')
+#    plt.ylabel(r'$y$', fontsize=16)
+#    plt.show()
+
+#    thoR = mu*duRdy                                                                # shear stress in fluid with roughness added
+#    thoR_w = thoR[0]                                                               # shear stress at wall with roughness added
+#    uR_tho = np.sqrt(thoR_w/rho)                                                   # friction velocity with roughness
+#    ypR = (y*uR_tho)/nu                                                            # law of the wall coordinate with roughness
+#    upR = uR/uR_tho                                                                # dimensionless velocity with roughness
+#    
+    #upR = ((1/kappa)*np.log(ypR))+D                                               # log-law dimesnionless velocity with roughness
+    
+#    plt.plot(yp[0:200], up[0:200], 'g', linewidth=2.0)                             # plot dimensionless velocity profile
+#    plt.title('Non-Dimensional Velocity Profile')
+#    plt.xlabel(r'$y+$', fontsize=16)
+#    plt.ylabel(r'$U+$', fontsize=16)
+#    plt.xscale('log')
+#    plt.show()
+    
+#    plt.plot(uR, y)
+#    plt.show()
+    
+#    plt.plot(ypR[0:200], upR[0:200], linewidth=2.0)                                # plot dimensionless velocity profile with roughness
+#    #plt.plot(ypR[0:200], ypR[0:200])                                               # plot law of the wall relation u+ = y+
+#    #plt.ylim(0, 50)
+#    plt.title('Non-Dimensional Velocity Profile With Roughness')
+#    plt.xlabel(r'$y+$', fontsize=16)
+#    plt.ylabel(r'$U+$', fontsize=16)
+#    plt.xscale('log')
+#    plt.show()
+    
+#    plt.plot(Re_x[0:200], DstarR[0:200], label='$\delta^*$', linewidth=2.0)        # plot displacement thickness with roughness
+#    plt.plot(Re_x[0:200], ThetaR[0:200], label=r'$\theta$', linewidth=2.0)         # plot momentum thickness with roughness
+#    plt.xscale('log')
+#    plt.title('Displacement and Momentum Thickness')
+#    plt.xlabel(r'$Re_x$', fontsize=16)
+#    plt.ylabel('$\delta^*$' '& ' r'$\theta$', fontsize=16)
+#    plt.legend(loc=2, fontsize=16)
+#    plt.show()

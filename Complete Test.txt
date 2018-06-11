@@ -1,0 +1,199 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr 24 14:39:23 2018
+
+@author: robin
+"""
+
+import numpy as np
+import scipy as sp
+import matplotlib.pyplot as plt
+from FinalLaminar import Laminar
+from Rough import Roughness
+
+"""Laminar Boundary Layer (BL) model based on momentum conservation equation
+and Newtons's second law of motion, applied to a control volume containing 
+the entire boundary layer. The equations are iterated over a grid, using the
+method of grid refinement."""
+
+n = 201;    dx = 0.25                                                          # numerical parameters
+
+u = np.zeros((n, 1))                                                           # initialize u
+v = np.zeros((n, 1))                                                           # initialize v
+r = np.zeros((n, 1))                                                           # initialize r 
+
+xmax = 301.0;   ymax = 20.0                                                    # domain size
+
+Re = 100.0;     Ue = 1.0;   delta = 1.0                                        # physical properties
+
+nit = round(xmax/dx);   dy = ymax/((n-1).real)                                 # x-grid
+Y = np.arange(0, ymax+dy, dy) [np.newaxis]                                     # y-grid not transposed
+y = Y.T                                                                        # y-grid
+
+for j in range(0, n):                                                          # set initial profile
+    v[j] = 0.0                              
+    if y[j] < delta:                                                           # if vertical distance smaller than
+        u[j] = y[j]                                                            # BL thickness, u-velocity = y. If
+    else:                                                                      # higher, u-velocity=Ue=1.0
+        u[j] = 1.0
+
+A = sp.sparse.diags([np.zeros(n-1), np.zeros(n), np.zeros(n-1)], [-1, 0, 1]).toarray() # initialize matrix A
+
+x = np.zeros(5000)                                                             # initialize x
+dstar = np.ndarray(5000,)                                                      # initialize dstar
+theta = np.ndarray(5000,)                                                      # initialize theta
+H = np.ndarray(5000,)                                                          # initialize H
+
+
+for it in range(0, 200):                                                       # main loop, sweeps x forward
+    uml=u                                                                      # store previous u
+    for i in range(1, n-1):                                                    # set coefficients in A
+        A[i, i-1] = -v[i]*dx/(2.0*dy)-dx/dy**2/Re
+        A[i, i] = u[i]+2.0*dx/dy**2/Re
+        A[i, i+1] = v[i]*dx/(2.0*dy)-dx/dy**2/Re
+        r[i] = (u[i]**2)                                                       # set r
+
+    A[0, 0] = 1.0; r[0] = 0.0                                                  # lower wall BC
+    A[n-1, n-1] = 1.0; r[n-1] = Ue                                             # upper wall BC
+    
+    u = np.linalg.solve(A, r)                                                  # solve matrix system
+    
+    v[0] = 0.0                                                                 # sweep upwards in y for v
+    for g in range(1, n):
+        v[g] = v[g-1]-dy/(2.0*dx)*(u[g]-uml[g]+u[g-1]-uml[g-1])
+
+    x[it] = it*dx                                                              # set x-axis for plot
+    U = 1.0-u                                                                  # simplify integration function
+    V = u*(1.0-u)                                                              # simplify integration function
+    dstar = sp.integrate.trapz(U, y, axis=0)                                   # BL displacement thickness
+    theta = sp.integrate.trapz(V, y, axis=0)
+    Theta = sp.integrate.cumtrapz(V, y, axis=0)                                # BL momentum thickness
+    H[it] = dstar/theta                                                        # BL shape factor
+    Dstar = sp.integrate.cumtrapz(U, y, axis=0)
+  
+#    plt.plot(u, y, 'g', linewidth=2.0)                                             # plot velocity profile
+#    plt.ylabel('Vertical domain size')
+#    plt.xlabel('Velocity')
+#    plt.title('Laminar Boundary Layer Velocity Profile')
+#    plt.xlim(0, 1.2)
+#    plt.show()
+#    print(it)
+
+#"""Include the Roughness Force Term in the model. This is added to the r[j]
+#coefficients in the matrix system AU=R. The roughness shape function chosen is
+#the Gaussian model, and eta(h) has been approximated as eta(h)=2h."""
+#
+#rho = 1.225                                                                    # air density at sea level and 15°C
+nu = 14.61*(10**(-6))                                                          # air kinematic viscosity at sea level and 15°C
+#mu = 17.89*(10**(-6))
+#
+#dudy = np.ndarray(n-1, )                                                       # initialize du/dy array
+#                                                       # initialize shear stress array
+#for i in range(0, n-1):
+#    dudy[i] = (u[i+1]-u[i])/dy                                                 # calculate du/dy derivative (explicit definition)
+#
+#tho = mu*dudy
+#tho_w = tho[0]                                                                 # shear stress at wall (du/dy at y=0)
+#u_tho = np.sqrt(tho_w/rho)                                                     # friction velocity
+#h = 1.0                                                                        # roughness height
+#
+#alpha = 1.0                                                                    # Roughness Factor
+#kappa = 0.41                                                                   # von Karman constant
+#D = 5.5                                                                        # additive constant for smooth wall, turbulent boundary layer
+#
+#yp = (y*u_tho)/(nu/rho)                                              # y+: law of the wall coordinate
+#up = u/u_tho                                                         # u+: dimensionless law of the wall velocity
+#
+#yp[0] = 0.0                                                                    # boundary condition for y+
+#F = np.exp(-(y**2)/(4*(h**2)))                                                 # Roughness shape factor
+#C = alpha*F*u*abs(v)
+
+#u = Laminar()[0]
+#v = Laminar()[6]
+C = Roughness()
+
+count = 1
+
+for it in range(201, nit):                                                       # main loop, sweeps x forward
+    uml=u                                                                      # store previous u
+    for i in range(1, n-1):                                                    # set coefficients in A
+        A[i, i-1] = -v[i]*dx/(2.0*dy)-dx/dy**2/Re
+        A[i, i] = u[i]+2.0*dx/dy**2/Re
+        A[i, i+1] = v[i]*dx/(2.0*dy)-dx/dy**2/Re
+        r[i] = (u[i]**2)-C[i]                                                      # set r
+
+    A[0, 0] = 1.0; r[0] = 0.0                                                  # lower wall BC
+    A[n-1, n-1] = 1.0; r[n-1] = Ue                                             # upper wall BC
+    
+    u = np.linalg.solve(A, r)                                                  # solve matrix system
+    
+    v[0] = 0.0                                                                 # sweep upwards in y for v
+    for g in range(1, n):
+        v[g] = v[g-1]-dy/(2.0*dx)*(u[g]-uml[g]+u[g-1]-uml[g-1])
+
+    x[it] = it*dx                                                              # set x-axis for plot
+    U = 1.0-u                                                                  # simplify integration function
+    V = u*(1.0-u)                                                              # simplify integration function
+    dstar = sp.integrate.trapz(U, y, axis=0)                                   # BL displacement thickness
+    theta = sp.integrate.trapz(V, y, axis=0)
+    Theta = sp.integrate.cumtrapz(V, y, axis=0)                                # BL momentum thickness
+    H[it] = dstar/theta                                                        # BL shape factor
+    Dstar = sp.integrate.cumtrapz(U, y, axis=0)
+    
+#    plt.plot(u, y, 'g', linewidth=2.0)                                             # plot velocity profile
+#    plt.ylabel('Vertical domain size')
+#    plt.xlabel('Velocity')
+#    plt.title('Laminar Boundary Layer Velocity Profile')
+#    plt.xlim(0, 1.2)
+#    plt.show()
+#    print(it)
+
+    Un = 1.0                                                                       # define Un for the amplification factor equation
+    Re_theta = (Ue*Theta)/nu                                                      # define Re_theta for every position in BL
+    Re_dstar = (Ue*Dstar)/nu                                                      # define Re_dstar for every position in BL
+    a = ((1.415/(H-1))-0.489)*np.tanh((20/(H-1))-12.9)+(3.295/(H-1))+0.44       # coefficient a for Re_theta_crit=10^a
+    f1 = 0.01*((((2.4*H)-3.7+(2.5*np.tanh((1.5*H)-4.65)))**(2))+0.25)**0.5       # first subsidiary function for Bn integration
+    f2 = ((6.54*H)-14.07)/(H**2)                                                 # second subsidiary function for Bn integration
+    f3 = ((0.058*(H-4)**2)/(H-1))-0.068                                          # third subsidiary function for Bn integration
+
+    Bn = np.ndarray(5000,)                                                         # initialize array for Bn values
+    Re_x = np.ndarray(n-1,)                                                        # define Re_x for every position in BL
+    
+    for j in range(0, n-1):
+        Re_x[j] = (u[j]*x[j])/nu
+    
+    for i in range(0, n-1):                                                        # set the Bn values for Re_theta over critical Re_theta
+        if Re_theta[i] < 10**a[i]:
+            Bn[i] = 0
+        elif Re_theta[i] >= 10**a[i]:
+            Bn[i] = (Un*f1[i]*(f2[i]+f3[i]))/(2*theta)                            # obtained via dn/dx = (dn/dRe_theta)*(dRe_theta/dx)
+    
+    F = Bn/Un                                                                      # normalize Bn with Un
+    N = sp.integrate.cumtrapz(F, x)                                                # integrate dn/dx = Bn to find the amplification factor n
+    E = np.ndarray(5000,)
+    
+
+    for i in range(199):
+        E[i] = N[i] + ((Re_x[i+1]-Re_x[i])*Bn[i])                                  # n[i+1] = n[i] + Re_x increment*gradient of n(x)
+
+    
+    xnine = np.linspace(0, 3000000, 5000)                                          # create horizontal reference line at n=9
+    ynine = np.ndarray(5000,)
+    for i in range(len(xnine)):
+        ynine[i] = 9
+    for i in range(1, 100):
+        if count == 1:
+            if E[i] < 9:
+                print (E[i])
+                print (it)
+                count = 0
+            
+#    plt.plot(Re_x[0:100], E[0:100], 'r+', linewidth=2.0, label="$Re _x $")               # plot amplification factor
+#    plt.plot(xnine, ynine, 'k')
+#    plt.legend(loc=2, fontsize=16)
+#    plt.title('Envelope Function')
+#    plt.ylabel('Amplification Factor')
+#    plt.xlabel(r'$Re_x$', fontsize=16)
+#    plt.xscale('log')
+#    plt.show()
+#    print(it)

@@ -1,0 +1,99 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Apr 24 15:36:53 2018
+
+@author: robin
+"""
+
+import numpy as np
+import scipy as sp
+from FinalLaminar import Laminar
+
+def Roughness():
+    
+    """Laminar Boundary Layer (BL) model based on momentum conservation equation
+    and Newtons's second law of motion, applied to a control volume containing 
+    the entire boundary layer. The equations are iterated over a grid, using the
+    method of grid refinement."""
+    
+    n = 201;    dx = 0.25                                                          # numerical parameters
+    
+#    u = np.zeros((n, 1))                                                           # initialize u
+#    v = np.zeros((n, 1))                                                           # initialize v
+    r = np.zeros((n, 1))                                                           # initialize r 
+    
+    xmax = 301.0;   ymax = 20.0                                                    # domain size
+    
+    Re = 100.0;     Ue = 1.0;   delta = 1.0                                        # physical properties
+    
+    dy = ymax/((n-1).real)                                 # x-grid
+    Y = np.arange(0, ymax+dy, dy) [np.newaxis]                                     # y-grid not transposed
+    y = Y.T                                                                        # y-grid
+    
+#    for j in range(0, n):                                                          # set initial profile
+#        v[j] = 0.0                              
+#        if y[j] < delta:                                                           # if vertical distance smaller than
+#            u[j] = y[j]                                                            # BL thickness, u-velocity = y. If
+#        else:                                                                      # higher, u-velocity=Ue=1.0
+#            u[j] = 1.0
+    u = Laminar()[0]
+    v = Laminar()[6]
+    A = sp.sparse.diags([np.zeros(n-1), np.zeros(n), np.zeros(n-1)], [-1, 0, 1]).toarray() # initialize matrix A
+    
+    x = np.zeros(5000)                                                             # initialize x
+    dstar = np.ndarray(5000,)                                                      # initialize dstar
+    theta = np.ndarray(5000,)                                                      # initialize theta
+    H = np.ndarray(5000,)                                                          # initialize H
+    
+    
+#    for it in range(0, 200):                                                       # main loop, sweeps x forward
+#        uml=u                                                                      # store previous u
+#        for i in range(1, n-1):                                                    # set coefficients in A
+#            A[i, i-1] = -v[i]*dx/(2.0*dy)-dx/dy**2/Re
+#            A[i, i] = u[i]+2.0*dx/dy**2/Re
+#            A[i, i+1] = v[i]*dx/(2.0*dy)-dx/dy**2/Re
+#            r[i] = (u[i]**2)                                                       # set r
+#    
+#        A[0, 0] = 1.0; r[0] = 0.0                                                  # lower wall BC
+#        A[n-1, n-1] = 1.0; r[n-1] = Ue                                             # upper wall BC
+#        
+#        u = np.linalg.solve(A, r)                                                  # solve matrix system
+#        
+#        v[0] = 0.0                                                                 # sweep upwards in y for v
+#        for g in range(1, n):
+#            v[g] = v[g-1]-dy/(2.0*dx)*(u[g]-uml[g]+u[g-1]-uml[g-1])
+#    
+#        x[it] = it*dx                                                              # set x-axis for plot
+#        U = 1.0-u                                                                  # simplify integration function
+#        V = u*(1.0-u)                                                              # simplify integration function
+#        dstar = sp.integrate.trapz(U, y, axis=0)                                   # BL displacement thickness
+#        theta = sp.integrate.trapz(V, y, axis=0)                               # BL momentum thickness
+#        H[it] = dstar/theta                                                        # BL shape factor
+        
+    """Include the Roughness Force Term in the model. This is added to the r[j]
+    coefficients in the matrix system AU=R. The roughness shape function chosen is
+    the Gaussian model, and eta(h) has been approximated as eta(h)=2h."""
+    
+    rho = 1.225                                                                    # air density at sea level and 15°C
+    nu = 14.61*(10**(-6))                                                          # air kinematic viscosity at sea level and 15°C
+    mu = 17.89*(10**(-6))
+    
+    dudy = np.ndarray(n-1, )                                                       # initialize du/dy array
+                                                           # initialize shear stress array
+    for i in range(0, n-1):
+        dudy[i] = (u[i+1]-u[i])/dy                                                 # calculate du/dy derivative (explicit definition)
+    
+    tho = mu*dudy
+    tho_w = tho[0]                                                                 # shear stress at wall (du/dy at y=0)
+    u_tho = np.sqrt(tho_w/rho)                                                     # friction velocity
+    h = 1.0                                                                        # roughness height
+    
+    alpha = 1.0                                                                    # Roughness Factor
+                                                                       # additive constant for smooth wall, turbulent boundary layer
+    
+    yp = (y*u_tho)/(nu/rho)                                              # y+: law of the wall coordinate                                                       # u+: dimensionless law of the wall velocity
+    
+    yp[0] = 0.0                                                                    # boundary condition for y+
+    F = np.exp(-(y**2)/(4*(h**2)))                                                 # Roughness shape factor
+    C = alpha*F*u*abs(v)
+    return(C)
